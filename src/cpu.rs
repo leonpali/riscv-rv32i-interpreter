@@ -1,3 +1,5 @@
+use crate::memory::Memory;
+
 pub enum Register {
     X0,
     X1,
@@ -36,4 +38,5 @@ pub enum Register {
 pub struct Cpu {
     pub registers: [u32; 32],
     pub pc: u32,
+    pub memory: Memory,
 }
