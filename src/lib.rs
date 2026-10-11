@@ -1,4 +1,5 @@
 mod cpu;
-mod error;
+pub mod decode;
+pub mod error;
 mod memory;
-mod instruction;
+pub mod instruction;
