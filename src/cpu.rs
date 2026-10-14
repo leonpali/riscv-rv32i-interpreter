@@ -1,42 +1,43 @@
 use crate::memory::Memory;
+use crate::error::ErrorType;
+use crate::decode::decode;
+use crate::execute::execute;
 
-pub enum Register {
-    X0,
-    X1,
-    X2,
-    X3,
-    X4,
-    X5,
-    X6,
-    X7,
-    X8,
-    X9,
-    X10,
-    X11,
-    X12,
-    X13,
-    X14,
-    X15,
-    X16,
-    X17,
-    X18,
-    X19,
-    X20,
-    X21,
-    X22,
-    X23,
-    X24,
-    X25,
-    X26,
-    X27,
-    X28,
-    X29,
-    X30,
-    X31,
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepResult {
+    Continue,
+    Exit(u32),
 }
 
 pub struct Cpu {
     pub registers: [u32; 32],
     pub pc: u32,
     pub memory: Memory,
+}
+
+impl Cpu {
+    pub fn new(memory_size: usize) -> Self {
+        Self {
+            registers: [0; 32],
+            pc: 0,
+            memory: Memory::new(memory_size),
+        }
+    }
+
+    pub fn step(&mut self) -> Result<StepResult, ErrorType> {
+        let raw = self.memory.read_u32(self.pc)?;
+        let inst = decode(raw)?;
+        execute(self, inst)
+    }
+
+    pub fn read_reg(&self, reg: u8) -> u32 {
+        self.registers[reg as usize]
+    }
+
+    pub fn write_reg(&mut self, reg: u8, val: u32) {
+        if reg != 0 {
+            self.registers[reg as usize] = val;
+        }
+    }
 }
