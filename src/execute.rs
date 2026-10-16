@@ -81,12 +81,12 @@ pub fn execute(cpu: &mut Cpu, inst: Instruction) -> Result<StepResult, ErrorType
             }
         },
         Bge { rs1, rs2, imm } => {
-            if (cpu.read_reg(rs1) as i32) > (cpu.read_reg(rs2) as i32) {
+            if (cpu.read_reg(rs1) as i32) >= (cpu.read_reg(rs2) as i32) {
                 next_pc = jump_target(pc.wrapping_add(imm as u32))?;
             }
         },
         Bgeu { rs1, rs2, imm } => {
-            if cpu.read_reg(rs1) > cpu.read_reg(rs2) {
+            if cpu.read_reg(rs1) >= cpu.read_reg(rs2) {
                 next_pc = jump_target(pc.wrapping_add(imm as u32))?;
             }
         },
@@ -116,17 +116,17 @@ pub fn execute(cpu: &mut Cpu, inst: Instruction) -> Result<StepResult, ErrorType
         },
         Sw { rs1, rs2, imm } => {
             let addr = cpu.read_reg(rs1).wrapping_add(imm as u32);
-            cpu.memory.write_u32(addr, cpu.read_reg(rs2));
+            cpu.memory.write_u32(addr, cpu.read_reg(rs2))?;
         },
         Sh { rs1, rs2, imm } => {
             let addr = cpu.read_reg(rs1).wrapping_add(imm as u32);
             let val = cpu.read_reg(rs2) as u16;
-            cpu.memory.write_u16(addr, val);
+            cpu.memory.write_u16(addr, val)?;
         },
         Sb { rs1, rs2, imm } => {
             let addr = cpu.read_reg(rs1).wrapping_add(imm as u32);
             let val = cpu.read_reg(rs2) as u8;
-            cpu.memory.write_u8(addr, val);
+            cpu.memory.write_u8(addr, val)?;
         },
         Fence => {},
         Ecall => {
