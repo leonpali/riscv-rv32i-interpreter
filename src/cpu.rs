@@ -14,6 +14,7 @@ pub struct Cpu {
     pub registers: [u32; 32],
     pub pc: u32,
     pub memory: Memory,
+    pub output: Vec<u8>,
 }
 
 impl Cpu {
@@ -22,6 +23,7 @@ impl Cpu {
             registers: [0; 32],
             pc: 0,
             memory: Memory::new(memory_size),
+            output: Vec::new(),
         }
     }
 

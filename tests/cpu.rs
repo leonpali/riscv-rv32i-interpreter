@@ -83,6 +83,26 @@ fn step_exit_syscall() {
 }
 
 #[test]
+fn step_write_syscall_continues_after_ecall() {
+    let mut cpu = cpu_with_program(&[
+        0x00100513, // addi a0, x0, 1      (stdout)
+        0x10000593, // addi a1, x0, 0x100  (buffer)
+        0x00300613, // addi a2, x0, 3      (length)
+        0x04000893, // addi a7, x0, 64     (write)
+        0x00000073, // ecall
+    ]);
+    for (i, &byte) in b"hi\n".iter().enumerate() {
+        cpu.memory.write_u8(0x100 + i as u32, byte).unwrap();
+    }
+    for _ in 0..5 {
+        assert_eq!(cpu.step(), Ok(StepResult::Continue));
+    }
+    assert_eq!(cpu.output, b"hi\n");
+    assert_eq!(cpu.registers[10], 3);
+    assert_eq!(cpu.pc, 20);
+}
+
+#[test]
 fn step_illegal_instruction() {
     let mut cpu = Cpu::new(1024);
     assert_eq!(cpu.step(), Err(ErrorType::IllegalInstruction(0)));

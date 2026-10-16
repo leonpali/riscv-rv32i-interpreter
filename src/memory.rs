@@ -51,4 +51,8 @@ impl Memory {
         self.slice_mut(addr, 1)?[0] = val;
         Ok(())
     }
+
+    pub fn read_bytes(&self, addr: u32, len: u32) -> Result<&[u8], ErrorType> {
+        self.slice(addr, len as usize)
+    }
 }

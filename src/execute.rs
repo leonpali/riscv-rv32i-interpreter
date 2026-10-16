@@ -2,6 +2,7 @@ use crate::cpu::{Cpu, StepResult};
 use crate::error::ErrorType;
 use crate::instruction::Instruction::*;
 use crate::instruction::Instruction;
+use crate::syscall;
 
 pub fn execute(cpu: &mut Cpu, inst: Instruction) -> Result<StepResult, ErrorType> {
     let pc = cpu.pc;
@@ -130,10 +131,9 @@ pub fn execute(cpu: &mut Cpu, inst: Instruction) -> Result<StepResult, ErrorType
         },
         Fence => {},
         Ecall => {
-            let syscall = cpu.read_reg(17);
-            match syscall {
-                93 => return Ok(StepResult::Exit(cpu.read_reg(10))),
-                _ => return Err(ErrorType::UnsupportedSyscall(syscall)),
+            let result = syscall::handle(cpu)?;
+            if result != StepResult::Continue {
+                return Ok(result);
             }
         },
         Ebreak => return Err(ErrorType::Breakpoint(pc)),
