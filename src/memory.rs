@@ -55,4 +55,9 @@ impl Memory {
     pub fn read_bytes(&self, addr: u32, len: u32) -> Result<&[u8], ErrorType> {
         self.slice(addr, len as usize)
     }
+
+    pub fn write_bytes(&mut self, addr: u32, val: &[u8]) -> Result<(), ErrorType> {
+        self.slice_mut(addr, val.len())?.copy_from_slice(val);
+        Ok(())
+    }
 }
