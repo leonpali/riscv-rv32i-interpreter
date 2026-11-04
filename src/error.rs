@@ -5,4 +5,5 @@ pub enum ErrorType {
     InstructionAddressMisaligned(u32),
     Breakpoint(u32),
     UnsupportedSyscall(u32),
+    InvalidElf(&'static str),
 }

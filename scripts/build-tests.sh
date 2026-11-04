@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Assembles tests/programs/asm/*.S into flat binaries in tests/programs/bin/.
+# Assembles tests/programs/asm/*.S into flat binaries in tests/programs/bin/
+# and ELF executables in tests/programs/elf/.
 # Each binary is linked at address 0 with _start first, which is where the
 # loader puts it and starts execution.
 #
@@ -14,15 +15,16 @@ CROSS=${CROSS:-riscv64-unknown-elf-}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/tests/programs/asm
 OUT=$ROOT/tests/programs/bin
+ELF=$ROOT/tests/programs/elf
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$OUT"
+mkdir -p "$OUT" "$ELF"
 
 for src in "$SRC"/*.S; do
     name=$(basename "$src" .S)
     "${CROSS}as" -march=rv32i -mabi=ilp32 -I "$SRC" -o "$TMP/$name.o" "$src"
-    "${CROSS}ld" -m elf32lriscv --no-relax -nostdlib -Ttext=0 -e _start -o "$TMP/$name.elf" "$TMP/$name.o"
-    "${CROSS}objcopy" -O binary "$TMP/$name.elf" "$OUT/$name.bin"
-    echo "built $name.bin"
+    "${CROSS}ld" -m elf32lriscv --no-relax -nostdlib -Ttext=0 -e _start -o "$ELF/$name.elf" "$TMP/$name.o"
+    "${CROSS}objcopy" -O binary "$ELF/$name.elf" "$OUT/$name.bin"
+    echo "built $name.bin and $name.elf"
 done

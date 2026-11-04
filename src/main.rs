@@ -1,4 +1,4 @@
-use riscv_rv32i_interpreter::loader::load;
+use riscv_rv32i_interpreter::loader::{is_elf, load, load_elf};
 use riscv_rv32i_interpreter::cpu::{Cpu, StepResult};
 use std::io::Write;
 
@@ -6,7 +6,7 @@ const MEMORY_SIZE: usize = 1 << 20;
 
 fn main() {
     let path = std::env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("usage: riscv-rv32i-interpreter <program.bin>");
+        eprintln!("usage: riscv-rv32i-interpreter <program.elf | program.bin>");
         std::process::exit(2);
     });
 
@@ -17,7 +17,12 @@ fn main() {
 
     let mut cpu = Cpu::new(MEMORY_SIZE);
 
-    if let Err(e) = load(&mut cpu, &program, 0) {
+    let loaded = if is_elf(&program) {
+        load_elf(&mut cpu, &program)
+    } else {
+        load(&mut cpu, &program, 0)
+    };
+    if let Err(e) = loaded {
         eprintln!("cannot load program: {e:?}");
         std::process::exit(2);
     }

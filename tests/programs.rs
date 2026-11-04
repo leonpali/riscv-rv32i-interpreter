@@ -5,7 +5,7 @@ use std::process::Command;
 
 use riscv_rv32i_interpreter::cpu::{Cpu, StepResult};
 use riscv_rv32i_interpreter::error::ErrorType;
-use riscv_rv32i_interpreter::loader::load;
+use riscv_rv32i_interpreter::loader::{load, load_elf};
 
 const MEMORY_SIZE: usize = 1 << 20;
 const MAX_STEPS: usize = 1_000_000;
@@ -80,6 +80,39 @@ fn ebreak() {
     assert_eq!(run(program!("ebreak")), (Err(ErrorType::Breakpoint(4)), vec![]));
 }
 
+// ---------- the same programs as ELF files ----------
+
+/// Like `run`, but loads the ELF version through `load_elf`.
+fn run_elf(file: &[u8]) -> (Result<StepResult, ErrorType>, Vec<u8>) {
+    let mut cpu = Cpu::new(MEMORY_SIZE);
+    load_elf(&mut cpu, file).unwrap();
+    for _ in 0..MAX_STEPS {
+        match cpu.step() {
+            Ok(StepResult::Continue) => {}
+            result => return (result, cpu.output),
+        }
+    }
+    panic!("program did not stop within {MAX_STEPS} steps (pc = {:#010x})", cpu.pc);
+}
+
+macro_rules! elf {
+    ($name:literal) => {
+        include_bytes!(concat!("programs/elf/", $name, ".elf"))
+    };
+}
+
+#[test]
+fn elf_programs_match_flat_binaries() {
+    assert_eq!(run_elf(elf!("exit")), run(program!("exit")));
+    assert_eq!(run_elf(elf!("hello")), run(program!("hello")));
+    assert_eq!(run_elf(elf!("fib")), run(program!("fib")));
+    assert_eq!(run_elf(elf!("alu")).0, Ok(StepResult::Exit(0)));
+    assert_eq!(run_elf(elf!("branches")).0, Ok(StepResult::Exit(0)));
+    // two PT_LOAD segments: code at 0x0, data at 0x1158
+    assert_eq!(run_elf(elf!("memory")).0, Ok(StepResult::Exit(0)));
+    assert_eq!(run_elf(elf!("ebreak")), run(program!("ebreak")));
+}
+
 // ---------- the interpreter binary (main.rs) ----------
 
 fn interpreter() -> Command {
@@ -111,6 +144,14 @@ fn cli_reports_errors() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("Breakpoint"), "stderr was: {stderr}");
     assert!(stderr.contains("0x00000004"), "stderr was: {stderr}");
+}
+
+#[test]
+fn cli_runs_elf_files() {
+    let path = format!("{}/tests/programs/elf/hello.elf", env!("CARGO_MANIFEST_DIR"));
+    let out = interpreter().arg(path).output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stdout, b"Hello, world!\n");
 }
 
 #[test]
