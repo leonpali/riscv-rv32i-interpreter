@@ -305,3 +305,106 @@ fn write_bytes_start_out_of_bounds() {
         Err(ErrorType::MemoryOutOfBounds(2000))
     );
 }
+
+// ---------- memory at a base address ----------
+
+const BASE: u32 = 0x8000_0000;
+
+fn based() -> Memory {
+    Memory::with_base(BASE, SIZE)
+}
+
+#[test]
+fn new_starts_at_zero() {
+    let mem = memory();
+    assert_eq!(mem.base(), 0);
+    assert_eq!(mem.size(), SIZE);
+}
+
+#[test]
+fn with_base_reports_base_and_size() {
+    let mem = based();
+    assert_eq!(mem.base(), BASE);
+    assert_eq!(mem.size(), SIZE);
+}
+
+#[test]
+fn based_memory_round_trip() {
+    let mut mem = based();
+    mem.write_u32(BASE, 0xdeadbeef).unwrap();
+    mem.write_u16(BASE + 0x10, 0xbeef).unwrap();
+    mem.write_u8(BASE + 0x20, 0xab).unwrap();
+    mem.write_bytes(BASE + 0x30, b"hi").unwrap();
+    assert_eq!(mem.read_u32(BASE), Ok(0xdeadbeef));
+    assert_eq!(mem.read_u16(BASE + 0x10), Ok(0xbeef));
+    assert_eq!(mem.read_u8(BASE + 0x20), Ok(0xab));
+    assert_eq!(mem.read_bytes(BASE + 0x30, 2), Ok(&b"hi"[..]));
+}
+
+#[test]
+fn based_memory_last_byte() {
+    let mut mem = based();
+    assert_eq!(mem.write_u8(BASE + END - 1, 7), Ok(()));
+    assert_eq!(mem.read_u8(BASE + END - 1), Ok(7));
+    assert_eq!(mem.read_u32(BASE + END - 4), Ok(0x07000000));
+}
+
+#[test]
+fn based_memory_past_end() {
+    let mem = based();
+    assert_eq!(mem.read_u8(BASE + END), Err(ErrorType::MemoryOutOfBounds(BASE + END)));
+    assert_eq!(
+        mem.read_u32(BASE + END - 3),
+        Err(ErrorType::MemoryOutOfBounds(BASE + END - 3))
+    );
+}
+
+#[test]
+fn based_memory_below_base() {
+    let mut mem = based();
+    assert_eq!(mem.read_u8(BASE - 1), Err(ErrorType::MemoryOutOfBounds(BASE - 1)));
+    assert_eq!(mem.read_u8(0), Err(ErrorType::MemoryOutOfBounds(0)));
+    assert_eq!(mem.write_u32(0x100, 1), Err(ErrorType::MemoryOutOfBounds(0x100)));
+    assert_eq!(mem.read_bytes(0, 4), Err(ErrorType::MemoryOutOfBounds(0)));
+}
+
+#[test]
+fn based_memory_access_straddling_base() {
+    // starts 2 bytes below memory and ends 2 bytes inside it
+    let mut mem = based();
+    assert_eq!(mem.read_u32(BASE - 2), Err(ErrorType::MemoryOutOfBounds(BASE - 2)));
+    assert_eq!(
+        mem.write_u32(BASE - 2, 0xffffffff),
+        Err(ErrorType::MemoryOutOfBounds(BASE - 2))
+    );
+    // the 2 bytes inside memory are not written
+    assert_eq!(mem.read_u16(BASE), Ok(0));
+}
+
+#[test]
+fn based_memory_huge_length_does_not_panic() {
+    let mem = based();
+    assert_eq!(mem.read_bytes(BASE, u32::MAX), Err(ErrorType::MemoryOutOfBounds(BASE)));
+    assert_eq!(
+        mem.read_bytes(u32::MAX, u32::MAX),
+        Err(ErrorType::MemoryOutOfBounds(u32::MAX))
+    );
+}
+
+#[test]
+fn memory_ending_at_top_of_address_space() {
+    let top = 0xffff_fc00; // 1024 bytes up to and including 0xffffffff
+    let mut mem = Memory::with_base(top, SIZE);
+    assert_eq!(mem.write_u8(u32::MAX, 1), Ok(()));
+    assert_eq!(mem.read_u8(u32::MAX), Ok(1));
+    assert_eq!(mem.read_u32(u32::MAX - 3), Ok(0x01000000));
+    // must not wrap around to address 0
+    assert_eq!(mem.read_u16(u32::MAX), Err(ErrorType::MemoryOutOfBounds(u32::MAX)));
+    assert_eq!(mem.read_u8(0), Err(ErrorType::MemoryOutOfBounds(0)));
+}
+
+#[test]
+#[should_panic(expected = "does not fit in the 32-bit address space")]
+fn memory_past_top_of_address_space_panics() {
+    Memory::with_base(0xffff_ffff, 2);
+}

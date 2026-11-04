@@ -3,7 +3,7 @@
 
 .globl _start
 _start:
-    li sp, 0x10000          # the loader doesn't set up a stack yet
+    li sp, 0x80010000      # the loader doesn't set up a stack yet
     li a0, 10
     call fib
     li a7, 93               # exit(fib(10))

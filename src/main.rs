@@ -2,6 +2,7 @@ use riscv_rv32i_interpreter::loader::{is_elf, load, load_elf};
 use riscv_rv32i_interpreter::cpu::{Cpu, StepResult};
 use std::io::Write;
 
+const MEMORY_BASE: u32 = 0x8000_0000;
 const MEMORY_SIZE: usize = 1 << 20;
 
 fn main() {
@@ -15,12 +16,12 @@ fn main() {
         std::process::exit(2);
     });
 
-    let mut cpu = Cpu::new(MEMORY_SIZE);
+    let mut cpu = Cpu::with_memory_base(MEMORY_BASE, MEMORY_SIZE);
 
     let loaded = if is_elf(&program) {
         load_elf(&mut cpu, &program)
     } else {
-        load(&mut cpu, &program, 0)
+        load(&mut cpu, &program, MEMORY_BASE)
     };
     if let Err(e) = loaded {
         eprintln!("cannot load program: {e:?}");

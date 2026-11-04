@@ -19,10 +19,14 @@ pub struct Cpu {
 
 impl Cpu {
     pub fn new(memory_size: usize) -> Self {
+        Self::with_memory_base(0, memory_size)
+    }
+
+    pub fn with_memory_base(memory_base: u32, memory_size: usize) -> Self {
         Self {
             registers: [0; 32],
-            pc: 0,
-            memory: Memory::new(memory_size),
+            pc: memory_base,
+            memory: Memory::with_base(memory_base, memory_size),
             output: Vec::new(),
         }
     }

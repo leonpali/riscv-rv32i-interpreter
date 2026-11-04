@@ -319,3 +319,39 @@ fn loaded_elf_runs() {
     }
     assert_eq!(cpu.step(), Ok(StepResult::Exit(42)));
 }
+
+// ---------- memory at a base address ----------
+
+const BASE: u32 = 0x8000_0000;
+
+#[test]
+fn load_at_memory_base() {
+    let mut cpu = Cpu::with_memory_base(BASE, 1024);
+    load(&mut cpu, &[1, 2, 3, 4], BASE).unwrap();
+    assert_eq!(cpu.memory.read_bytes(BASE, 4), Ok(&[1, 2, 3, 4][..]));
+    assert_eq!(cpu.pc, BASE);
+}
+
+#[test]
+fn load_below_memory_base() {
+    let mut cpu = Cpu::with_memory_base(BASE, 1024);
+    assert_eq!(load(&mut cpu, &[1, 2, 3, 4], 0), Err(ErrorType::MemoryOutOfBounds(0)));
+}
+
+#[test]
+fn elf_at_memory_base() {
+    let mut cpu = Cpu::with_memory_base(BASE, 1024);
+    load_elf(&mut cpu, &elf(BASE + 8, &[seg(BASE, &[1, 2, 3, 4])])).unwrap();
+    assert_eq!(cpu.memory.read_bytes(BASE, 4), Ok(&[1, 2, 3, 4][..]));
+    assert_eq!(cpu.pc, BASE + 8);
+}
+
+#[test]
+fn elf_segment_below_memory_base() {
+    // e.g. a segment that also maps the ELF headers, one page below RAM
+    let mut cpu = Cpu::with_memory_base(BASE, 1024);
+    assert_eq!(
+        load_elf(&mut cpu, &elf(BASE, &[seg(BASE - 0x1000, &[0; 8])])),
+        Err(ErrorType::MemoryOutOfBounds(BASE - 0x1000))
+    );
+}

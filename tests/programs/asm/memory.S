@@ -57,7 +57,7 @@ _start:
     check t0, 0x00000001, 12
 
     # ---- stack push / pop ----
-    li sp, 0x10000
+    li sp, 0x80010000
     addi sp, sp, -8
     sw t1, 4(sp)
     lw t3, 4(sp)

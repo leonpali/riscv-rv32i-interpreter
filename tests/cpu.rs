@@ -115,3 +115,35 @@ fn step_with_pc_out_of_bounds() {
     cpu.pc = 1024;
     assert_eq!(cpu.step(), Err(ErrorType::MemoryOutOfBounds(1024)));
 }
+
+#[test]
+fn with_memory_base_starts_pc_at_base() {
+    let cpu = Cpu::with_memory_base(0x8000_0000, 1024);
+    assert_eq!(cpu.pc, 0x8000_0000);
+    assert_eq!(cpu.memory.base(), 0x8000_0000);
+    assert_eq!(cpu.memory.size(), 1024);
+}
+
+#[test]
+fn step_with_memory_at_base() {
+    // the loop from step_runs_loop, placed at 0x80000000
+    let mut cpu = Cpu::with_memory_base(0x8000_0000, 1024);
+    for (i, word) in [0x00300093u32, 0x00000113, 0x00210113, 0xfff08093, 0xfe009ce3]
+        .into_iter()
+        .enumerate()
+    {
+        cpu.memory.write_u32(0x8000_0000 + i as u32 * 4, word).unwrap();
+    }
+    for _ in 0..11 {
+        assert_eq!(cpu.step(), Ok(StepResult::Continue));
+    }
+    assert_eq!(cpu.registers[2], 6);
+    assert_eq!(cpu.pc, 0x8000_0014);
+}
+
+#[test]
+fn step_with_pc_below_memory_base() {
+    let mut cpu = Cpu::with_memory_base(0x8000_0000, 1024);
+    cpu.pc = 0;
+    assert_eq!(cpu.step(), Err(ErrorType::MemoryOutOfBounds(0)));
+}

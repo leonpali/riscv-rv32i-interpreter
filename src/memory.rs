@@ -1,28 +1,50 @@
 use crate::error::ErrorType;
 
+const ADDRESS_SPACE_SIZE: u64 = 1 << 32;
+
 pub struct Memory {
+    base: u32,
     data: Vec<u8>,
 }
 
 impl Memory {
     pub fn new(size: usize) -> Self {
-        Self { data: vec![0; size] }
+        Self::with_base(0, size)
+    }
+
+    pub fn with_base(base: u32, size: usize) -> Self {
+        assert!(
+            base as u64 + size as u64 <= ADDRESS_SPACE_SIZE,
+            "memory at {base:#010x} with size {size:#x} does not fit in the 32-bit address space"
+        );
+        Self { base, data: vec![0; size] }
+    }
+
+    pub fn base(&self) -> u32 {
+        self.base
+    }
+
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
+
+    fn range(&self, addr: u32, len: usize) -> Result<std::ops::Range<usize>, ErrorType> {
+        let start = addr.wrapping_sub(self.base) as usize;
+        start
+            .checked_add(len)
+            .filter(|&end| end <= self.data.len())
+            .map(|end| start..end)
+            .ok_or(ErrorType::MemoryOutOfBounds(addr))
     }
 
     fn slice(&self, addr: u32, len: usize) -> Result<&[u8], ErrorType> {
-        let start = addr as usize;
-        start
-            .checked_add(len)
-            .and_then(|end| self.data.get(start..end))
-            .ok_or(ErrorType::MemoryOutOfBounds(addr))
+        let range = self.range(addr, len)?;
+        Ok(&self.data[range])
     }
 
     fn slice_mut(&mut self, addr: u32, len: usize) -> Result<&mut [u8], ErrorType> {
-        let start = addr as usize;
-        start
-            .checked_add(len)
-            .and_then(|end| self.data.get_mut(start..end))
-            .ok_or(ErrorType::MemoryOutOfBounds(addr))
+        let range = self.range(addr, len)?;
+        Ok(&mut self.data[range])
     }
 
     pub fn read_u32(&self, addr: u32) -> Result<u32, ErrorType> {

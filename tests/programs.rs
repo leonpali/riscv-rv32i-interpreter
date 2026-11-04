@@ -7,14 +7,15 @@ use riscv_rv32i_interpreter::cpu::{Cpu, StepResult};
 use riscv_rv32i_interpreter::error::ErrorType;
 use riscv_rv32i_interpreter::loader::{load, load_elf};
 
+const MEMORY_BASE: u32 = 0x8000_0000;
 const MEMORY_SIZE: usize = 1 << 20;
 const MAX_STEPS: usize = 1_000_000;
 
-/// Loads `program` at address 0 and steps until it exits or fails.
+/// Loads `program` at the start of memory and steps until it exits or fails.
 /// Returns the final result and everything the program wrote.
 fn run(program: &[u8]) -> (Result<StepResult, ErrorType>, Vec<u8>) {
-    let mut cpu = Cpu::new(MEMORY_SIZE);
-    load(&mut cpu, program, 0).unwrap();
+    let mut cpu = Cpu::with_memory_base(MEMORY_BASE, MEMORY_SIZE);
+    load(&mut cpu, program, MEMORY_BASE).unwrap();
     for _ in 0..MAX_STEPS {
         match cpu.step() {
             Ok(StepResult::Continue) => {}
@@ -77,14 +78,14 @@ fn memory() {
 
 #[test]
 fn ebreak() {
-    assert_eq!(run(program!("ebreak")), (Err(ErrorType::Breakpoint(4)), vec![]));
+    assert_eq!(run(program!("ebreak")), (Err(ErrorType::Breakpoint(0x80000004)), vec![]));
 }
 
 // ---------- the same programs as ELF files ----------
 
 /// Like `run`, but loads the ELF version through `load_elf`.
 fn run_elf(file: &[u8]) -> (Result<StepResult, ErrorType>, Vec<u8>) {
-    let mut cpu = Cpu::new(MEMORY_SIZE);
+    let mut cpu = Cpu::with_memory_base(MEMORY_BASE, MEMORY_SIZE);
     load_elf(&mut cpu, file).unwrap();
     for _ in 0..MAX_STEPS {
         match cpu.step() {
@@ -108,7 +109,7 @@ fn elf_programs_match_flat_binaries() {
     assert_eq!(run_elf(elf!("fib")), run(program!("fib")));
     assert_eq!(run_elf(elf!("alu")).0, Ok(StepResult::Exit(0)));
     assert_eq!(run_elf(elf!("branches")).0, Ok(StepResult::Exit(0)));
-    // two PT_LOAD segments: code at 0x0, data at 0x1158
+    // code and data in one PT_LOAD segment, with the data a page after the code
     assert_eq!(run_elf(elf!("memory")).0, Ok(StepResult::Exit(0)));
     assert_eq!(run_elf(elf!("ebreak")), run(program!("ebreak")));
 }
@@ -143,7 +144,7 @@ fn cli_reports_errors() {
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("Breakpoint"), "stderr was: {stderr}");
-    assert!(stderr.contains("0x00000004"), "stderr was: {stderr}");
+    assert!(stderr.contains("0x80000004"), "stderr was: {stderr}");
 }
 
 #[test]

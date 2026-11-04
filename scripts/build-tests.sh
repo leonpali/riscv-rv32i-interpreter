@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Assembles tests/programs/asm/*.S into flat binaries in tests/programs/bin/
 # and ELF executables in tests/programs/elf/.
-# Each binary is linked at address 0 with _start first, which is where the
-# loader puts it and starts execution.
+# Each program is linked at 0x80000000 (the start of RAM) with _start first,
+# which is where the loader puts it and starts execution.
 #
 # --no-relax: without it the linker rewrites `la` into gp-relative
 # addressing, but nothing sets up gp (x3) in these programs.
+#
+# --nmagic: without it the first segment also maps the ELF headers, which
+# puts its start one page below 0x80000000, outside of memory.
 #
 # Set CROSS to use a different toolchain prefix, e.g.
 #   CROSS=riscv32-unknown-elf- scripts/build-tests.sh
@@ -24,7 +27,7 @@ mkdir -p "$OUT" "$ELF"
 for src in "$SRC"/*.S; do
     name=$(basename "$src" .S)
     "${CROSS}as" -march=rv32i -mabi=ilp32 -I "$SRC" -o "$TMP/$name.o" "$src"
-    "${CROSS}ld" -m elf32lriscv --no-relax -nostdlib -Ttext=0 -e _start -o "$ELF/$name.elf" "$TMP/$name.o"
+    "${CROSS}ld" -m elf32lriscv --no-relax --nmagic --no-warn-rwx-segments -nostdlib -Ttext=0x80000000 -e _start -o "$ELF/$name.elf" "$TMP/$name.o"
     "${CROSS}objcopy" -O binary "$ELF/$name.elf" "$OUT/$name.bin"
     echo "built $name.bin and $name.elf"
 done
