@@ -1,3 +1,4 @@
+pub mod compiler;
 pub mod cpu;
 pub mod decode;
 pub mod error;

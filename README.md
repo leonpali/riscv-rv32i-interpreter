@@ -236,3 +236,170 @@ The official tests cover every RV32I instruction, plus `simple`, `fence_i`
 (self-modifying code), `ma_data` (misaligned loads and stores), `ld_st` and
 `st_ld`. The runner was checked against deliberately broken builds: a wrong
 `SUB` fails exactly `rv32ui-p-sub` at the right case number.
+
+
+## Small Language + Compiler
+
+### Grammar
+
+Non-terminals are in capitals, alternatives are separated by `|`, `END` is the
+empty string, lines starting with `#` are comments, and everything else is a
+terminal. Whitespace between tokens doesn't matter.
+
+```text
+START          -> class CLASS_NAME { BODY }
+
+# class level: no return
+BODY           -> STATEMENT BODY | FUNC_DEF BODY | END
+BLOCK          -> STATEMENT BLOCK | END
+STATEMENT      -> VARIABLE | ASSIGNMENT | IF | WHILE | FUNC_CALL ;
+IF             -> if ( EXPR ) { BLOCK } ELSE
+ELSE           -> else { BLOCK } | END
+WHILE          -> while ( EXPR ) { BLOCK }
+
+# function level: every function ends with a return, and a nested block may
+# end with one (early return)
+FUNC_DEF       -> func RET_TYPE VAR_NAME ( PARAMS ) { FUNC_BODY RETURN }
+RET_TYPE       -> VAR_TYPE | void
+FUNC_BODY      -> FUNC_STATEMENT FUNC_BODY | END
+FUNC_BLOCK     -> FUNC_STATEMENT FUNC_BLOCK | RETURN | END
+FUNC_STATEMENT -> VARIABLE | ASSIGNMENT | FUNC_IF | FUNC_WHILE | FUNC_CALL ;
+FUNC_IF        -> if ( EXPR ) { FUNC_BLOCK } FUNC_ELSE
+FUNC_ELSE      -> else { FUNC_BLOCK } | END
+FUNC_WHILE     -> while ( EXPR ) { FUNC_BLOCK }
+RETURN         -> return EXPR ; | return ;
+
+VARIABLE       -> VAR_TYPE VAR_NAME = EXPR ;
+ASSIGNMENT     -> VAR_NAME = EXPR ;
+VAR_TYPE       -> int
+
+PARAMS         -> PARAM PARAMS_REST | END
+PARAMS_REST    -> , PARAM PARAMS_REST | END
+PARAM          -> VAR_TYPE VAR_NAME
+FUNC_CALL      -> VAR_NAME ( ARGS )
+ARGS           -> EXPR ARGS_REST | END
+ARGS_REST      -> , EXPR ARGS_REST | END
+
+EXPR           -> AND_EXPR OR_REST
+OR_REST        -> || AND_EXPR OR_REST | END
+AND_EXPR       -> COMPARISON AND_REST
+AND_REST       -> && COMPARISON AND_REST | END
+COMPARISON     -> SUM COMPARE_REST
+COMPARE_REST   -> COMPARE_OP SUM | END
+SUM            -> TERM SUM_REST
+SUM_REST       -> ADD_OP TERM SUM_REST | END
+TERM           -> FACTOR TERM_REST
+TERM_REST      -> MUL_OP FACTOR TERM_REST | END
+FACTOR         -> - FACTOR | INT_NUM | VAR_NAME | FUNC_CALL | ( EXPR )
+
+COMPARE_OP     -> == | != | < | > | >= | <=
+ADD_OP         -> + | -
+MUL_OP         -> * | /
+
+CLASS_NAME     -> [A-Z][a-zA-Z0-9\-_]*
+VAR_NAME       -> [a-z][a-zA-Z0-9\-_]*   (except keywords)
+INT_NUM        -> [0-9]+
+```
+
+**Keywords** are reserved and can't be used as a `VAR_NAME`:
+`class int void if else while func return`.
+
+**Precedence**, from loosest to tightest binding:
+
+| Level | Operators | Example |
+|---|---|---|
+| 1 | `\|\|` | `a < 1 \|\| b < 2 && c < 3` means `a < 1 \|\| (b < 2 && c < 3)` |
+| 2 | `&&` | |
+| 3 | `== != < > >= <=` | `a + 1 < b * 2` means `(a + 1) < (b * 2)` |
+| 4 | `+ -` | `a + b * c` means `a + (b * c)` |
+| 5 | `* /` | `-a * b` means `(-a) * b` |
+| 6 | unary `-` | `- -a` means `-(-a)` |
+
+Parentheses override precedence anywhere, in conditions too:
+`(a < 1 || b < 2) && c < 3`.
+
+The binary operators `|| && + - * /` are left-associative: `a - b - c` means
+`(a - b) - c`. The grammar has no left recursion, so the `_REST` rules only
+list the operands. The parser builds the tree from left to right as it reads
+them. Comparisons don't chain: `a < b < c` is a syntax error.
+
+### Returns
+
+- **Every function ends with a `return`** as its last statement: `return EXPR;`
+  for an `int` function, `return;` for a `void` function.
+- **A nested block inside a function may end with a `return`** (early return),
+  for example `if (n < 0) { return 0; }`. A `return` must be the last
+  statement of its block, so code after it, which would never run, is a syntax
+  error.
+- **`return` at class level is a syntax error**, including inside class-level
+  `if` and `while` blocks.
+
+The statement rules exist twice, once for the class level and once with the
+`FUNC_` prefix for functions, because a context-free grammar has no other way
+to say "only inside a function". In a recursive-descent parser it's one set of
+functions with an `in_function` flag.
+
+The grammar is LL(2). When a statement or a `FACTOR` starts with a `VAR_NAME`,
+the parser looks at the next token: `(` means a `FUNC_CALL`, `=` means an
+`ASSIGNMENT`, and anything else means a plain variable. The final `RETURN` in
+`FUNC_DEF` needs no extra lookahead: at the top level of a function body,
+`return` can only be the final one.
+
+### Rules outside the grammar
+
+These are checked after parsing, because the grammar can't express them
+cleanly:
+
+- **The form of a `return` must match the return type:** `return EXPR;` in an
+  `int` function and `return;` in a `void` function, for every `return`,
+  including early ones.
+- **A `void` call has no value.** It can only be a statement, `f();`, not part
+  of an expression, so `x = f();` is rejected for a `void` `f`.
+- **Conditions and integers share one expression grammar.** That is what lets
+  `(` start either an arithmetic or a logical group. Comparisons and `&& ||`
+  produce `1` (true) or `0` (false), and a condition is true if it is not `0`,
+  as in C. This maps directly to RISC-V `slt`/`beqz`/`bnez`.
+- **Names may contain `-`**, so `x-1` is a single name, not a subtraction.
+  Write `x - 1` or `x -1`. A name can't start with `-`, so `-x` is always unary
+  minus.
+
+Example:
+
+```text
+class Main {
+    func int add(int a, int b) {
+        return a + b;
+    }
+
+    func int abs(int n) {
+        if (n < 0) {
+            return -n;
+        }
+        return n;
+    }
+
+    func void count-down(int n) {
+        while (n > 0) {
+            if (n == 3) {
+                return;
+            }
+            n = n - 1;
+        }
+        return;
+    }
+
+    int x = 10;
+    int step-size = -1;
+    int sum = abs(-5 * 2) - 10;
+    while ((x > 0 && sum != 100) || x == 10) {
+        sum = add(sum, x * (2 - 1));
+        x = x + step-size;
+    }
+    if (sum >= 55 && (sum != 0 || x == 0)) {
+        sum = sum / 5;
+    } else {
+        sum = -(sum + 1);
+    }
+    count-down(sum);
+}
+```
