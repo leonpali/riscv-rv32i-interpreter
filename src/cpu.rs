@@ -10,11 +10,16 @@ pub enum StepResult {
     Exit(u32),
 }
 
+pub const CSR_COUNT: usize = 4096;
+
+pub const CSR_MEPC: u16 = 0x341;
+
 pub struct Cpu {
     pub registers: [u32; 32],
     pub pc: u32,
     pub memory: Memory,
     pub output: Vec<u8>,
+    pub csrs: [u32; CSR_COUNT],
 }
 
 impl Cpu {
@@ -28,6 +33,7 @@ impl Cpu {
             pc: memory_base,
             memory: Memory::with_base(memory_base, memory_size),
             output: Vec::new(),
+            csrs: [0; CSR_COUNT],
         }
     }
 
@@ -45,5 +51,13 @@ impl Cpu {
         if reg != 0 {
             self.registers[reg as usize] = val;
         }
+    }
+
+    pub fn read_csr(&self, csr: u16) -> u32 {
+        self.csrs[csr as usize]
+    }
+
+    pub fn write_csr(&mut self, csr: u16, val: u32) {
+        self.csrs[csr as usize] = val;
     }
 }

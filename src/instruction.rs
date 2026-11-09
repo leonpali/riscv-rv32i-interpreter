@@ -57,4 +57,18 @@ pub enum Instruction {
     Fence,
     Ecall,
     Ebreak,
+
+    // Instruction-Fetch Fence (Zifencei)
+    FenceI,
+
+    // Control and Status Register Instructions (Zicsr)
+    Csrrw { rd: u8, rs1: u8, csr: u16 },
+    Csrrs { rd: u8, rs1: u8, csr: u16 },
+    Csrrc { rd: u8, rs1: u8, csr: u16 },
+    Csrrwi { rd: u8, zimm: u8, csr: u16 },
+    Csrrsi { rd: u8, zimm: u8, csr: u16 },
+    Csrrci { rd: u8, zimm: u8, csr: u16 },
+
+    // Trap Return
+    Mret,
 }

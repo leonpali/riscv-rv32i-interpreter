@@ -375,3 +375,133 @@ fn ebreak() {
     let mut cpu = cpu();
     assert_eq!(execute(&mut cpu, Ebreak), Err(ErrorType::Breakpoint(START_PC)));
 }
+
+// ---------- Zifencei ----------
+
+#[test]
+fn fence_i_is_a_no_op() {
+    let mut cpu = cpu();
+    assert_eq!(execute(&mut cpu, FenceI), Ok(StepResult::Continue));
+    assert_eq!(cpu.pc, START_PC + 4);
+}
+
+// ---------- Zicsr ----------
+
+const MSCRATCH: u16 = 0x340;
+const MEPC: u16 = 0x341;
+
+#[test]
+fn csrrw_swaps_register_and_csr() {
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0x1111);
+    cpu.registers[2] = 0x2222;
+    assert_eq!(execute(&mut cpu, Csrrw { rd: 1, rs1: 2, csr: MSCRATCH }), Ok(StepResult::Continue));
+    assert_eq!(cpu.registers[1], 0x1111);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0x2222);
+    assert_eq!(cpu.pc, START_PC + 4);
+}
+
+#[test]
+fn csrrw_with_rd_equal_rs1() {
+    // csrrw x1, csr, x1: the CSR gets the old x1, x1 gets the old CSR
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0x1111);
+    cpu.registers[1] = 0x2222;
+    execute(&mut cpu, Csrrw { rd: 1, rs1: 1, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0x1111);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0x2222);
+}
+
+#[test]
+fn csrrw_to_x0_only_writes_csr() {
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0x1111);
+    cpu.registers[2] = 0x2222;
+    execute(&mut cpu, Csrrw { rd: 0, rs1: 2, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[0], 0);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0x2222);
+}
+
+#[test]
+fn csrrs_sets_bits() {
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0b1001);
+    cpu.registers[2] = 0b0110;
+    execute(&mut cpu, Csrrs { rd: 1, rs1: 2, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0b1001);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0b1111);
+}
+
+#[test]
+fn csrrs_with_x0_only_reads() {
+    // csrr rd, csr
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0xabcd);
+    execute(&mut cpu, Csrrs { rd: 1, rs1: 0, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0xabcd);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0xabcd);
+}
+
+#[test]
+fn csrrc_clears_bits() {
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0b1111);
+    cpu.registers[2] = 0b0110;
+    execute(&mut cpu, Csrrc { rd: 1, rs1: 2, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0b1111);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0b1001);
+}
+
+#[test]
+fn csr_immediates() {
+    let mut cpu = cpu();
+    execute(&mut cpu, Csrrwi { rd: 1, zimm: 31, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0);
+    assert_eq!(cpu.read_csr(MSCRATCH), 31);
+
+    execute(&mut cpu, Csrrci { rd: 1, zimm: 0b00011, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 31);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0b11100);
+
+    execute(&mut cpu, Csrrsi { rd: 1, zimm: 0b00001, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0b11100);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0b11101);
+}
+
+#[test]
+fn csr_immediate_zero_only_reads() {
+    let mut cpu = cpu();
+    cpu.write_csr(MSCRATCH, 0xabcd);
+    execute(&mut cpu, Csrrsi { rd: 1, zimm: 0, csr: MSCRATCH }).unwrap();
+    execute(&mut cpu, Csrrci { rd: 2, zimm: 0, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.registers[1], 0xabcd);
+    assert_eq!(cpu.registers[2], 0xabcd);
+    assert_eq!(cpu.read_csr(MSCRATCH), 0xabcd);
+}
+
+#[test]
+fn csrs_are_independent() {
+    let mut cpu = cpu();
+    cpu.registers[2] = 7;
+    execute(&mut cpu, Csrrw { rd: 0, rs1: 2, csr: MSCRATCH }).unwrap();
+    assert_eq!(cpu.read_csr(MEPC), 0);
+    assert_eq!(cpu.read_csr(0xfff), 0);
+}
+
+// ---------- MRET ----------
+
+#[test]
+fn mret_jumps_to_mepc() {
+    let mut cpu = cpu();
+    cpu.write_csr(MEPC, 0x200);
+    assert_eq!(execute(&mut cpu, Mret), Ok(StepResult::Continue));
+    assert_eq!(cpu.pc, 0x200);
+}
+
+#[test]
+fn mret_ignores_low_bits_of_mepc() {
+    let mut cpu = cpu();
+    cpu.write_csr(MEPC, 0x203);
+    execute(&mut cpu, Mret).unwrap();
+    assert_eq!(cpu.pc, 0x200);
+}

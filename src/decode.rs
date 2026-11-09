@@ -85,12 +85,28 @@ pub fn decode(raw: u32) -> Result<Instruction, ErrorType> {
             }
         }
 
-        0b0001111 => Fence,
+        0b0001111 => match funct3(raw) {
+            0b000 => Fence,
+            0b001 => FenceI,
+            _ => return illegal,
+        }
 
         0b1110011 => {
-            match imm_i(raw) {
-                0 => Ecall,
-                1 => Ebreak,
+            let csr = csr(raw);
+            let zimm = rs1;
+            match funct3(raw) {
+                0b000 => match raw {
+                    0x00000073 => Ecall,
+                    0x00100073 => Ebreak,
+                    0x30200073 => Mret,
+                    _ => return illegal,
+                },
+                0b001 => Csrrw { rd, rs1, csr },
+                0b010 => Csrrs { rd, rs1, csr },
+                0b011 => Csrrc { rd, rs1, csr },
+                0b101 => Csrrwi { rd, zimm, csr },
+                0b110 => Csrrsi { rd, zimm, csr },
+                0b111 => Csrrci { rd, zimm, csr },
                 _ => return illegal,
             }
         }
@@ -111,6 +127,8 @@ fn rs1(raw: u32) -> u8 { ((raw >> 15) & 0x1f) as u8 }
 fn rs2(raw: u32) -> u8 { ((raw >> 20) & 0x1f) as u8 }
 
 fn funct7(raw: u32) -> u32 { raw >> 25 }
+
+fn csr(raw: u32) -> u16 { (raw >> 20) as u16 }
 
 fn imm_i(raw: u32) -> i32 { (raw as i32) >> 20 }
 

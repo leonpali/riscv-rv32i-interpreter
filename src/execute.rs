@@ -1,4 +1,4 @@
-use crate::cpu::{Cpu, StepResult};
+use crate::cpu::{Cpu, StepResult, CSR_MEPC};
 use crate::error::ErrorType;
 use crate::instruction::Instruction::*;
 use crate::instruction::Instruction;
@@ -137,6 +137,46 @@ pub fn execute(cpu: &mut Cpu, inst: Instruction) -> Result<StepResult, ErrorType
             }
         },
         Ebreak => return Err(ErrorType::Breakpoint(pc)),
+        FenceI => {},
+        Csrrw { rd, rs1, csr } => {
+            let old = cpu.read_csr(csr);
+            cpu.write_csr(csr, cpu.read_reg(rs1));
+            cpu.write_reg(rd, old);
+        },
+        Csrrs { rd, rs1, csr } => {
+            let old = cpu.read_csr(csr);
+            if rs1 != 0 {
+                cpu.write_csr(csr, old | cpu.read_reg(rs1));
+            }
+            cpu.write_reg(rd, old);
+        },
+        Csrrc { rd, rs1, csr } => {
+            let old = cpu.read_csr(csr);
+            if rs1 != 0 {
+                cpu.write_csr(csr, old & !cpu.read_reg(rs1));
+            }
+            cpu.write_reg(rd, old);
+        },
+        Csrrwi { rd, zimm, csr } => {
+            let old = cpu.read_csr(csr);
+            cpu.write_csr(csr, zimm as u32);
+            cpu.write_reg(rd, old);
+        },
+        Csrrsi { rd, zimm, csr } => {
+            let old = cpu.read_csr(csr);
+            if zimm != 0 {
+                cpu.write_csr(csr, old | zimm as u32);
+            }
+            cpu.write_reg(rd, old);
+        },
+        Csrrci { rd, zimm, csr } => {
+            let old = cpu.read_csr(csr);
+            if zimm != 0 {
+                cpu.write_csr(csr, old & !(zimm as u32));
+            }
+            cpu.write_reg(rd, old);
+        },
+        Mret => next_pc = cpu.read_csr(CSR_MEPC) & !0b11,
     }
 
     cpu.pc = next_pc;

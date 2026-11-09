@@ -153,6 +153,11 @@ fn illegal_instructions() {
         0x023100b3, // mul (M extension, funct7 = 0000001)
         0x02011093, // slli shamt = 32 (RV64 only)
         0x20125193, // SRLI/SRAI with an invalid funct7
+        0x0000200f, // MISC-MEM funct3 = 010
+        0x00004073, // SYSTEM funct3 = 100
+        0x000000f3, // ecall with rd = x1
+        0x10200073, // sret (supervisor mode)
+        0x10500073, // wfi
     ];
     for raw in illegal {
         assert_eq!(
@@ -161,4 +166,38 @@ fn illegal_instructions() {
             "{raw:#010x} should be illegal"
         );
     }
+}
+
+#[test]
+fn fences() {
+    // fence rw, rw
+    assert_eq!(decode(0x0330000f), Ok(Fence));
+    assert_eq!(decode(0x0000100f), Ok(FenceI));
+}
+
+#[test]
+fn csr_register() {
+    // csrrw x1, mtvec, x2
+    assert_eq!(decode(0x305110f3), Ok(Csrrw { rd: 1, rs1: 2, csr: 0x305 }));
+    // csrrs x3, mhartid, x0  (csrr x3, mhartid)
+    assert_eq!(decode(0xf14021f3), Ok(Csrrs { rd: 3, rs1: 0, csr: 0xf14 }));
+    // csrrc x5, mstatus, x6
+    assert_eq!(decode(0x300332f3), Ok(Csrrc { rd: 5, rs1: 6, csr: 0x300 }));
+    // csrrw x0, mscratch, x10  (csrw mscratch, x10)
+    assert_eq!(decode(0x34051073), Ok(Csrrw { rd: 0, rs1: 10, csr: 0x340 }));
+}
+
+#[test]
+fn csr_immediate() {
+    // csrrwi x7, mepc, 31
+    assert_eq!(decode(0x341fd3f3), Ok(Csrrwi { rd: 7, zimm: 31, csr: 0x341 }));
+    // csrrsi x8, 0x744, 1
+    assert_eq!(decode(0x7440e473), Ok(Csrrsi { rd: 8, zimm: 1, csr: 0x744 }));
+    // csrrci x31, 0xfff, 0 (csr number must not be sign-extended)
+    assert_eq!(decode(0xfff07ff3), Ok(Csrrci { rd: 31, zimm: 0, csr: 0xfff }));
+}
+
+#[test]
+fn mret() {
+    assert_eq!(decode(0x30200073), Ok(Mret));
 }

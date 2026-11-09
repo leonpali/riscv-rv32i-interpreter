@@ -15,6 +15,7 @@ fn new_cpu_starts_zeroed() {
     let cpu = Cpu::new(1024);
     assert_eq!(cpu.registers, [0; 32]);
     assert_eq!(cpu.pc, 0);
+    assert!(cpu.csrs.iter().all(|&csr| csr == 0));
     assert_eq!(cpu.memory.read_u32(1020), Ok(0));
     assert_eq!(cpu.memory.read_u32(1024), Err(ErrorType::MemoryOutOfBounds(1024)));
 }
